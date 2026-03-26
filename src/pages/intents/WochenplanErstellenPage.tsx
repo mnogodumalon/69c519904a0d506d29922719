@@ -169,6 +169,37 @@ export default function WochenplanErstellenPage() {
     return m;
   }, [schichtvorlagen]);
 
+  // Quick-assign: loading state per cell key
+  const [quickAssigning, setQuickAssigning] = useState<Set<string>>(new Set());
+
+  const handleQuickAssign = useCallback(
+    async (employeeId: string, day: Date, schichtId: string) => {
+      const dateStr = format(day, 'yyyy-MM-dd');
+      const cellKey = `${employeeId}::${dateStr}::${schichtId}`;
+      setQuickAssigning(prev => new Set(prev).add(cellKey));
+      try {
+        const fields: CreateSchichtplanung = {
+          mitarbeiter_ref: createRecordUrl(APP_IDS.MITARBEITER, employeeId),
+          schicht_datum: dateStr,
+          schicht_ref: createRecordUrl(APP_IDS.SCHICHTVORLAGEN, schichtId),
+          planung_abteilung_ref: selectedDeptId
+            ? createRecordUrl(APP_IDS.STANDORTE_ABTEILUNGEN, selectedDeptId)
+            : undefined,
+          schicht_status: 'geplant' as unknown as LookupValue,
+        };
+        await LivingAppsService.createSchichtplanungEntry(fields);
+        await fetchAll();
+      } finally {
+        setQuickAssigning(prev => {
+          const next = new Set(prev);
+          next.delete(cellKey);
+          return next;
+        });
+      }
+    },
+    [selectedDeptId, fetchAll]
+  );
+
   const handleSelectDept = useCallback((id: string) => {
     setSelectedDeptId(id);
   }, []);
@@ -532,6 +563,7 @@ export default function WochenplanErstellenPage() {
                                 }`}
                               >
                                 <div className="flex flex-col gap-1">
+                                  {/* Assigned shifts */}
                                   {dayShifts.map(sp => {
                                     const schichtId = extractRecordId(sp.fields.schicht_ref);
                                     const schicht = schichtId ? schichtMap.get(schichtId) : undefined;
@@ -557,14 +589,45 @@ export default function WochenplanErstellenPage() {
                                       </div>
                                     );
                                   })}
-                                  <button
-                                    type="button"
-                                    onClick={() => openAddShiftDialog(emp.record_id, day)}
-                                    className="flex items-center justify-center w-full rounded-md border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors p-1"
-                                    aria-label="Schicht hinzufugen"
-                                  >
-                                    <IconPlus size={14} />
-                                  </button>
+                                  {/* Quick-assign buttons: one per Schichtvorlage */}
+                                  <div className="flex flex-wrap gap-0.5">
+                                    {schichtvorlagen.map(sv => {
+                                      const cellKey = `${emp.record_id}::${dateStr}::${sv.record_id}`;
+                                      const alreadyAssigned = dayShifts.some(
+                                        sp => extractRecordId(sp.fields.schicht_ref) === sv.record_id
+                                      );
+                                      const isLoading = quickAssigning.has(cellKey);
+                                      if (alreadyAssigned) return null;
+                                      const katKey = sv.fields.schicht_kategorie?.key ?? '';
+                                      const btnColor =
+                                        katKey === 'fruehschicht' ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200' :
+                                        katKey === 'spaetschicht' ? 'bg-indigo-100 text-indigo-700 border-indigo-300 hover:bg-indigo-200' :
+                                        katKey === 'nachtschicht' ? 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300' :
+                                        'bg-muted text-muted-foreground border-border hover:bg-muted/70';
+                                      return (
+                                        <button
+                                          key={sv.record_id}
+                                          type="button"
+                                          disabled={isLoading}
+                                          onClick={() => handleQuickAssign(emp.record_id, day, sv.record_id)}
+                                          className={`flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${btnColor} disabled:opacity-50`}
+                                          title={sv.fields.schicht_name ?? sv.fields.schicht_kuerzel}
+                                        >
+                                          <IconPlus size={9} className="shrink-0" />
+                                          {sv.fields.schicht_kuerzel ?? sv.fields.schicht_name ?? '?'}
+                                        </button>
+                                      );
+                                    })}
+                                    {/* Fallback: open dialog for custom */}
+                                    <button
+                                      type="button"
+                                      onClick={() => openAddShiftDialog(emp.record_id, day)}
+                                      className="flex items-center justify-center rounded border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors px-1.5 py-0.5"
+                                      title="Eigene Schicht hinzufügen"
+                                    >
+                                      <IconPlus size={10} />
+                                    </button>
+                                  </div>
                                 </div>
                               </td>
                             );
