@@ -40,6 +40,24 @@ import {
 } from 'date-fns';
 import { de } from 'date-fns/locale';
 
+// Distinct avatar colors for employee rows
+const AVATAR_COLORS = [
+  'bg-blue-500',
+  'bg-emerald-500',
+  'bg-violet-500',
+  'bg-orange-500',
+  'bg-rose-500',
+  'bg-cyan-500',
+  'bg-amber-500',
+  'bg-indigo-500',
+  'bg-teal-500',
+  'bg-pink-500',
+];
+
+function getAvatarColor(index: number): string {
+  return AVATAR_COLORS[index % AVATAR_COLORS.length];
+}
+
 // Status color map
 const STATUS_COLORS: Record<string, string> = {
   geplant: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -336,20 +354,25 @@ export default function DashboardOverview() {
                   style={{ gridTemplateColumns: `160px repeat(7, 1fr)` }}
                 >
                   {/* Employee name cell */}
-                  <div className="px-3 py-2 border-r border-border flex flex-col justify-center min-h-[56px]">
-                    <span className="text-xs font-medium text-foreground truncate">
-                      {m.fields.vorname} {m.fields.nachname}
-                    </span>
-                    {m.fields.beschaeftigungsart && (
-                      <span className="text-[10px] text-muted-foreground truncate mt-0.5">
-                        {m.fields.beschaeftigungsart.label}
+                  <div className="px-3 py-2 border-r border-border flex items-center gap-2 min-h-[56px]">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${getAvatarColor(rowIdx)}`}>
+                      {(m.fields.vorname?.[0] ?? '?')}{(m.fields.nachname?.[0] ?? '')}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-semibold text-foreground truncate block">
+                        {m.fields.vorname} {m.fields.nachname}
                       </span>
-                    )}
-                    {m.abteilung_refName && (
-                      <span className="text-[10px] text-muted-foreground truncate">
-                        {m.abteilung_refName}
-                      </span>
-                    )}
+                      {m.fields.beschaeftigungsart && (
+                        <span className="text-[10px] text-muted-foreground truncate block mt-0.5">
+                          {m.fields.beschaeftigungsart.label}
+                        </span>
+                      )}
+                      {m.abteilung_refName && (
+                        <span className="text-[10px] text-muted-foreground truncate block">
+                          {m.abteilung_refName}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Day cells */}
@@ -446,22 +469,22 @@ export default function DashboardOverview() {
           <div className="p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {enrichedMitarbeiter
-                .map(m => {
+                .map((m, mIdx) => {
                   const shifts = enrichedSchichtplanung.filter(p => {
                     if (!p.fields.schicht_datum) return false;
                     const d = parseISO(p.fields.schicht_datum.slice(0, 10));
                     const mitId = extractRecordId(p.fields.mitarbeiter_ref);
                     return d >= currentWeekStart && d <= weekEnd && mitId === m.record_id;
                   });
-                  return { m, shifts };
+                  return { m, mIdx, shifts };
                 })
                 .filter(({ shifts }) => shifts.length > 0)
-                .map(({ m, shifts }) => (
+                .map(({ m, mIdx, shifts }) => (
                   <div
                     key={m.record_id}
                     className="flex items-start gap-3 p-3 rounded-xl border border-border bg-muted/20"
                   >
-                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold shrink-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${getAvatarColor(mIdx)}`}>
                       {(m.fields.vorname?.[0] ?? '?')}{(m.fields.nachname?.[0] ?? '')}
                     </div>
                     <div className="min-w-0 flex-1">
