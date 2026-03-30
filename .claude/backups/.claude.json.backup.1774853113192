@@ -32,7 +32,14 @@
     "tengu_system_prompt_global_cache": false,
     "enhanced_telemetry_beta": false,
     "tengu_cache_plum_violet": false,
-    "tengu_streaming_tool_execution2": true
+    "tengu_streaming_tool_execution2": true,
+    "tengu_tool_search_unsupported_models": [
+      "haiku"
+    ],
+    "tengu_attribution_header": true,
+    "tengu_workout2": true,
+    "tengu_file_write_optimization": false,
+    "tengu_cork_m4q": false
   },
   "firstStartTime": "2026-03-26T11:34:09.185Z",
   "userID": "76ae6180651822092fce40cf77e964d4addd6dff5ac382b9e486ac77bdc925a3",

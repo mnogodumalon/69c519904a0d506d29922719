@@ -11,6 +11,7 @@ import SchichtplanungPage from '@/pages/SchichtplanungPage';
 
 const WochenplanErstellenPage = lazy(() => import('@/pages/intents/WochenplanErstellenPage'));
 const SchichtbestatigungPage = lazy(() => import('@/pages/intents/SchichtbestatigungPage'));
+const AbwesenheitMeldenPage = lazy(() => import('@/pages/intents/AbwesenheitMeldenPage'));
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="admin" element={<AdminPage />} />
             <Route path="intents/wochenplan-erstellen" element={<Suspense fallback={null}><WochenplanErstellenPage /></Suspense>} />
             <Route path="intents/schichtbestatigung" element={<Suspense fallback={null}><SchichtbestatigungPage /></Suspense>} />
+            <Route path="intents/abwesenheit-melden" element={<Suspense fallback={null}><AbwesenheitMeldenPage /></Suspense>} />
           </Route>
         </Routes>
       </ActionsProvider>
