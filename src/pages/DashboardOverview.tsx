@@ -23,6 +23,8 @@ import {
   IconCalendar,
   IconClock,
   IconCheck,
+  IconSun,
+  IconBuildingSkyscraper,
 } from '@tabler/icons-react';
 import {
   startOfWeek,
@@ -37,25 +39,16 @@ import {
 } from 'date-fns';
 import { de } from 'date-fns/locale';
 
-// Distinct avatar colors for employee rows
 const AVATAR_COLORS = [
-  'bg-blue-500',
-  'bg-emerald-500',
-  'bg-violet-500',
-  'bg-orange-500',
-  'bg-rose-500',
-  'bg-cyan-500',
-  'bg-amber-500',
-  'bg-indigo-500',
-  'bg-teal-500',
-  'bg-pink-500',
+  'bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-orange-500',
+  'bg-rose-500', 'bg-cyan-500', 'bg-amber-500', 'bg-indigo-500',
+  'bg-teal-500', 'bg-pink-500',
 ];
 
 function getAvatarColor(index: number): string {
   return AVATAR_COLORS[index % AVATAR_COLORS.length];
 }
 
-// Status color map
 const STATUS_COLORS: Record<string, string> = {
   geplant: 'bg-blue-100 text-blue-800 border-blue-200',
   bestaetigt: 'bg-green-100 text-green-800 border-green-200',
@@ -107,6 +100,21 @@ export default function DashboardOverview() {
 
   const weekDays = useMemo(() => getWeekDays(currentWeekStart), [currentWeekStart]);
   const weekEnd = useMemo(() => endOfWeek(currentWeekStart, { weekStartsOn: 1 }), [currentWeekStart]);
+
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+  const todayShifts = useMemo(() => {
+    return enrichedSchichtplanung.filter(p => {
+      if (!p.fields.schicht_datum) return false;
+      return p.fields.schicht_datum.slice(0, 10) === todayStr;
+    });
+  }, [enrichedSchichtplanung, todayStr]);
+
+  const mitarbeiterIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    enrichedMitarbeiter.forEach((m, i) => map.set(m.record_id, i));
+    return map;
+  }, [enrichedMitarbeiter]);
 
   const filteredMitarbeiter = useMemo<EnrichedMitarbeiter[]>(() => {
     if (selectedAbteilung === 'all') return enrichedMitarbeiter;
@@ -185,10 +193,12 @@ export default function DashboardOverview() {
   if (error) return <DashboardError error={error} onRetry={fetchAll} />;
 
   const isCurrentWeek = isSameDay(currentWeekStart, startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const todayFormatted = format(new Date(), 'EEEE, d. MMMM yyyy', { locale: de });
 
   return (
     <div className="space-y-6">
-      {/* KPI Row */}
+
+      {/* ── Intent 1: KPI-Überblick ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           title="Mitarbeiter"
@@ -197,71 +207,144 @@ export default function DashboardOverview() {
           icon={<IconUsers size={18} className="text-muted-foreground" />}
         />
         <StatCard
-          title="Schichten diese Woche"
-          value={String(weekStats.total)}
-          description="Geplante Einträge"
-          icon={<IconCalendar size={18} className="text-muted-foreground" />}
+          title="Heute im Dienst"
+          value={String(todayShifts.filter(s => s.fields.schicht_status?.key !== 'storniert' && s.fields.schicht_status?.key !== 'abwesend').length)}
+          description="Geplante Schichten"
+          icon={<IconSun size={18} className="text-muted-foreground" />}
         />
         <StatCard
-          title="Bestätigt"
+          title="Diese Woche bestätigt"
           value={String(weekStats.confirmed)}
-          description="Diese Woche"
+          description={`von ${weekStats.total} geplant`}
           icon={<IconCheck size={18} className="text-muted-foreground" />}
         />
         <StatCard
           title="Schichtvorlagen"
           value={String(schichtvorlagen.length)}
-          description="Vorlagen verfügbar"
+          description="Verfügbar"
           icon={<IconClock size={18} className="text-muted-foreground" />}
         />
       </div>
 
-      {/* Calendar Panel */}
+      {/* ── Intent 2: Heute – wer arbeitet? ── */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <IconSun size={16} className="text-primary shrink-0" />
+            <div>
+              <h2 className="font-semibold text-sm">Heute</h2>
+              <p className="text-xs text-muted-foreground capitalize">{todayFormatted}</p>
+            </div>
+          </div>
+          <Button size="sm" onClick={() => handleAddShift(new Date())} className="gap-1.5 shrink-0">
+            <IconPlus size={14} className="shrink-0" />
+            <span className="hidden sm:inline">Schicht für heute</span>
+            <span className="sm:hidden">Heute</span>
+          </Button>
+        </div>
+
+        <div className="p-4">
+          {todayShifts.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground text-sm">
+              <IconCalendar size={36} className="mx-auto mb-3 text-muted-foreground/40" stroke={1.5} />
+              Keine Schichten für heute geplant
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {todayShifts.map(shift => {
+                const mitId = extractRecordId(shift.fields.mitarbeiter_ref) ?? '';
+                const mitIdx = mitarbeiterIndexMap.get(mitId) ?? 0;
+                const statusKey = shift.fields.schicht_status?.key ?? 'geplant';
+                return (
+                  <div
+                    key={shift.record_id}
+                    className="flex items-start gap-3 p-3 rounded-xl border border-border bg-muted/20"
+                  >
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${getAvatarColor(mitIdx)}`}>
+                      {shift.mitarbeiter_refName
+                        ? shift.mitarbeiter_refName.split(' ').map(n => n[0]).join('').slice(0, 2)
+                        : '?'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold truncate">{shift.mitarbeiter_refName || '—'}</div>
+                      <div className="text-xs text-muted-foreground truncate mt-0.5">
+                        {shift.schicht_refName || '—'}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${STATUS_COLORS[statusKey] ?? STATUS_COLORS.geplant}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[statusKey] ?? STATUS_DOT.geplant}`} />
+                          {shift.fields.schicht_status?.label ?? 'Geplant'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => handleEditShift(shift)}
+                        className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                        title="Bearbeiten"
+                      >
+                        <IconPencil size={14} className="shrink-0" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(shift)}
+                        className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
+                        title="Löschen"
+                      >
+                        <IconTrash size={14} className="shrink-0" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Intent 3: Wochenplanung ── */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         {/* Calendar Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2 min-w-0">
-            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={goToPrevWeek}>
-              <IconChevronLeft size={16} />
-            </Button>
-            <div className="min-w-0">
-              <span className="font-semibold text-sm truncate">
+            <IconCalendar size={16} className="text-primary shrink-0" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" onClick={goToPrevWeek}>
+                <IconChevronLeft size={14} />
+              </Button>
+              <span className="font-semibold text-sm whitespace-nowrap">
                 {format(currentWeekStart, 'dd. MMM', { locale: de })} – {format(weekEnd, 'dd. MMM yyyy', { locale: de })}
               </span>
               {!isCurrentWeek && (
                 <button
                   onClick={goToCurrentWeek}
-                  className="ml-2 text-xs text-primary underline underline-offset-2 hover:no-underline"
+                  className="text-xs text-primary underline underline-offset-2 hover:no-underline shrink-0"
                 >
                   Heute
                 </button>
               )}
+              <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" onClick={goToNextWeek}>
+                <IconChevronRight size={14} />
+              </Button>
             </div>
-            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={goToNextWeek}>
-              <IconChevronRight size={16} />
-            </Button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Abteilung filter */}
-            <select
-              value={selectedAbteilung}
-              onChange={e => setSelectedAbteilung(e.target.value)}
-              className="text-xs border border-border rounded-lg px-2 py-1.5 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="all">Alle Abteilungen</option>
-              {standorteAbteilungen.map(s => (
-                <option key={s.record_id} value={s.record_id}>
-                  {s.fields.standort_name || s.fields.abteilung_name || 'Unbekannt'}
-                </option>
-              ))}
-            </select>
-
-            <Button
-              size="sm"
-              onClick={() => handleAddShift(new Date())}
-              className="gap-1.5 shrink-0"
-            >
+            <div className="flex items-center gap-1 text-xs text-muted-foreground border border-border rounded-lg px-2 py-1.5 bg-background">
+              <IconBuildingSkyscraper size={12} className="shrink-0" />
+              <select
+                value={selectedAbteilung}
+                onChange={e => setSelectedAbteilung(e.target.value)}
+                className="bg-transparent text-xs text-foreground focus:outline-none"
+              >
+                <option value="all">Alle Abteilungen</option>
+                {standorteAbteilungen.map(s => (
+                  <option key={s.record_id} value={s.record_id}>
+                    {s.fields.standort_name || s.fields.abteilung_name || 'Unbekannt'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button size="sm" onClick={() => handleAddShift(new Date())} className="gap-1.5 shrink-0">
               <IconPlus size={14} className="shrink-0" />
               <span className="hidden sm:inline">Schicht planen</span>
               <span className="sm:hidden">Neu</span>
@@ -287,11 +370,11 @@ export default function DashboardOverview() {
                     isToday(day) ? 'bg-primary/5' : ''
                   }`}
                 >
-                  <div className={`text-xs font-medium ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <div className={`text-[10px] font-medium uppercase tracking-wide ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
                     {format(day, 'EEE', { locale: de })}
                   </div>
                   <div
-                    className={`text-sm font-semibold leading-tight ${
+                    className={`text-sm font-semibold leading-tight mt-0.5 ${
                       isToday(day)
                         ? 'w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto'
                         : 'text-foreground'
@@ -316,7 +399,7 @@ export default function DashboardOverview() {
                   className={`grid border-b border-border last:border-b-0 ${rowIdx % 2 === 1 ? 'bg-muted/10' : ''}`}
                   style={{ gridTemplateColumns: `160px repeat(7, 1fr)` }}
                 >
-                  {/* Employee name cell */}
+                  {/* Employee cell */}
                   <div className="px-3 py-2 border-r border-border flex items-center gap-2 min-h-[56px]">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${getAvatarColor(rowIdx)}`}>
                       {(m.fields.vorname?.[0] ?? '?')}{(m.fields.nachname?.[0] ?? '')}
@@ -328,11 +411,6 @@ export default function DashboardOverview() {
                       {m.fields.beschaeftigungsart && (
                         <span className="text-[10px] text-muted-foreground truncate block mt-0.5">
                           {m.fields.beschaeftigungsart.label}
-                        </span>
-                      )}
-                      {m.abteilung_refName && (
-                        <span className="text-[10px] text-muted-foreground truncate block">
-                          {m.abteilung_refName}
                         </span>
                       )}
                     </div>
@@ -347,7 +425,7 @@ export default function DashboardOverview() {
                     return (
                       <div
                         key={day.toISOString()}
-                        className={`border-r border-border last:border-r-0 p-1 min-h-[56px] group ${
+                        className={`border-r border-border last:border-r-0 p-1 min-h-[56px] ${
                           isToday(day) ? 'bg-primary/5' : ''
                         }`}
                       >
@@ -357,23 +435,11 @@ export default function DashboardOverview() {
                             return (
                               <div
                                 key={shift.record_id}
-                                className={`rounded-md border px-1.5 py-1 text-[10px] leading-tight cursor-pointer ${
+                                className={`rounded-md border px-1.5 py-1 text-[10px] leading-tight ${
                                   STATUS_COLORS[statusKey] ?? STATUS_COLORS.geplant
                                 }`}
                               >
-                                <div className="font-medium truncate">
-                                  {shift.schicht_refName || '—'}
-                                </div>
-                                {shift.fields.schicht_status && (
-                                  <div className="flex items-center gap-1 mt-0.5">
-                                    <span
-                                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                        STATUS_DOT[statusKey] ?? STATUS_DOT.geplant
-                                      }`}
-                                    />
-                                    <span className="truncate">{shift.fields.schicht_status.label}</span>
-                                  </div>
-                                )}
+                                <div className="font-medium truncate">{shift.schicht_refName || '—'}</div>
                                 <div className="flex items-center gap-1 mt-1">
                                   <button
                                     onClick={() => handleEditShift(shift)}
@@ -393,7 +459,6 @@ export default function DashboardOverview() {
                               </div>
                             );
                           })}
-                          {/* Add button */}
                           <button
                             onClick={() => handleAddShift(day, m.record_id)}
                             className="flex items-center justify-center w-full rounded-md border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
@@ -411,26 +476,28 @@ export default function DashboardOverview() {
             )}
           </div>
         </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap gap-3 px-4 py-3 border-t border-border">
+          {LOOKUP_OPTIONS.schichtplanung?.schicht_status?.map(opt => (
+            <div key={opt.key} className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[opt.key] ?? 'bg-gray-400'}`} />
+              <span className="text-xs text-muted-foreground">{opt.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3">
-        {LOOKUP_OPTIONS.schichtplanung?.schicht_status?.map(opt => (
-          <div key={opt.key} className="flex items-center gap-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[opt.key] ?? 'bg-gray-400'}`} />
-            <span className="text-xs text-muted-foreground">{opt.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Weekly Summary */}
+      {/* ── Intent 4: Wochenübersicht pro Mitarbeiter ── */}
       {weekStats.total > 0 && (
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+            <IconUsers size={16} className="text-primary shrink-0" />
             <h3 className="font-semibold text-sm">Wochenübersicht</h3>
+            <Badge variant="secondary" className="text-xs ml-auto">{weekStats.total} Schichten</Badge>
           </div>
           <div className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {enrichedMitarbeiter
                 .map((m, mIdx) => {
                   const shifts = enrichedSchichtplanung.filter(p => {
@@ -443,10 +510,7 @@ export default function DashboardOverview() {
                 })
                 .filter(({ shifts }) => shifts.length > 0)
                 .map(({ m, mIdx, shifts }) => (
-                  <div
-                    key={m.record_id}
-                    className="flex items-start gap-3 p-3 rounded-xl border border-border bg-muted/20"
-                  >
+                  <div key={m.record_id} className="flex items-start gap-3 p-3 rounded-xl border border-border bg-muted/20">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${getAvatarColor(mIdx)}`}>
                       {(m.fields.vorname?.[0] ?? '?')}{(m.fields.nachname?.[0] ?? '')}
                     </div>
@@ -469,9 +533,7 @@ export default function DashboardOverview() {
                         })}
                       </div>
                     </div>
-                    <span className="text-xs font-semibold text-muted-foreground shrink-0">
-                      {shifts.length}x
-                    </span>
+                    <span className="text-xs font-semibold text-muted-foreground shrink-0">{shifts.length}×</span>
                   </div>
                 ))}
             </div>
@@ -479,7 +541,7 @@ export default function DashboardOverview() {
         </div>
       )}
 
-      {/* Schichtplanung Dialog */}
+      {/* Dialogs */}
       <SchichtplanungDialog
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setEditRecord(null); }}
@@ -499,7 +561,6 @@ export default function DashboardOverview() {
         enablePhotoLocation={AI_PHOTO_LOCATION['Schichtplanung']}
       />
 
-      {/* Delete Confirm */}
       <ConfirmDialog
         open={!!deleteTarget}
         title="Schicht löschen"
@@ -521,6 +582,7 @@ function DashboardSkeleton() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
       </div>
+      <Skeleton className="h-48 rounded-2xl" />
       <Skeleton className="h-96 rounded-2xl" />
     </div>
   );
