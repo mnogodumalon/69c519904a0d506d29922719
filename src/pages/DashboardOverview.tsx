@@ -25,6 +25,7 @@ import {
   IconCheck,
   IconSun,
   IconBuildingSkyscraper,
+  IconAlertTriangle,
 } from '@tabler/icons-react';
 import {
   startOfWeek,
@@ -146,7 +147,8 @@ export default function DashboardOverview() {
     });
     const confirmed = weekPlannings.filter(p => p.fields.schicht_status?.key === 'bestaetigt').length;
     const absent = weekPlannings.filter(p => p.fields.schicht_status?.key === 'abwesend').length;
-    return { total: weekPlannings.length, confirmed, absent };
+    const pending = weekPlannings.filter(p => p.fields.schicht_status?.key === 'geplant').length;
+    return { total: weekPlannings.length, confirmed, absent, pending };
   }, [enrichedSchichtplanung, currentWeekStart, weekEnd]);
 
   const goToPrevWeek = useCallback(() => setCurrentWeekStart(d => subWeeks(d, 1)), []);
@@ -194,11 +196,14 @@ export default function DashboardOverview() {
 
   const isCurrentWeek = isSameDay(currentWeekStart, startOfWeek(new Date(), { weekStartsOn: 1 }));
   const todayFormatted = format(new Date(), 'EEEE, d. MMMM yyyy', { locale: de });
+  const todayActive = todayShifts.filter(s =>
+    s.fields.schicht_status?.key !== 'storniert' && s.fields.schicht_status?.key !== 'abwesend'
+  );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
 
-      {/* ── Intent 1: KPI-Überblick ── */}
+      {/* ── KPI-Leiste ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           title="Mitarbeiter"
@@ -208,105 +213,167 @@ export default function DashboardOverview() {
         />
         <StatCard
           title="Heute im Dienst"
-          value={String(todayShifts.filter(s => s.fields.schicht_status?.key !== 'storniert' && s.fields.schicht_status?.key !== 'abwesend').length)}
-          description="Geplante Schichten"
+          value={String(todayActive.length)}
+          description="Aktive Schichten"
           icon={<IconSun size={18} className="text-muted-foreground" />}
         />
         <StatCard
-          title="Diese Woche bestätigt"
+          title="Bestätigt diese Woche"
           value={String(weekStats.confirmed)}
-          description={`von ${weekStats.total} geplant`}
+          description={`von ${weekStats.total} Schichten`}
           icon={<IconCheck size={18} className="text-muted-foreground" />}
         />
         <StatCard
-          title="Schichtvorlagen"
-          value={String(schichtvorlagen.length)}
-          description="Verfügbar"
+          title="Offene Bestätigungen"
+          value={String(weekStats.pending)}
+          description="Noch geplant"
           icon={<IconClock size={18} className="text-muted-foreground" />}
         />
       </div>
 
-      {/* ── Intent 2: Heute – wer arbeitet? ── */}
-      <div className="rounded-2xl border border-border bg-card overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <IconSun size={16} className="text-primary shrink-0" />
-            <div>
-              <h2 className="font-semibold text-sm">Heute</h2>
-              <p className="text-xs text-muted-foreground capitalize">{todayFormatted}</p>
+      {/* ── Heute-Briefing + Hinweis ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Heute-Panel */}
+        <div className="lg:col-span-2 rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <IconSun size={16} className="text-primary" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-semibold text-sm leading-tight">Heute</h2>
+                <p className="text-xs text-muted-foreground capitalize truncate">{todayFormatted}</p>
+              </div>
             </div>
+            <Button size="sm" onClick={() => handleAddShift(new Date())} className="gap-1.5 shrink-0">
+              <IconPlus size={14} className="shrink-0" />
+              <span className="hidden sm:inline">Schicht für heute</span>
+              <span className="sm:hidden">Hinzufügen</span>
+            </Button>
           </div>
-          <Button size="sm" onClick={() => handleAddShift(new Date())} className="gap-1.5 shrink-0">
-            <IconPlus size={14} className="shrink-0" />
-            <span className="hidden sm:inline">Schicht für heute</span>
-            <span className="sm:hidden">Heute</span>
-          </Button>
+
+          <div className="p-3">
+            {todayShifts.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground text-sm">
+                <IconCalendar size={32} className="mx-auto mb-2 text-muted-foreground/30" stroke={1.5} />
+                <p className="text-sm">Keine Schichten für heute geplant</p>
+                <p className="text-xs mt-1 text-muted-foreground/70">Klicke auf „Schicht für heute" um eine neue Schicht anzulegen</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {todayShifts.map(shift => {
+                  const mitId = extractRecordId(shift.fields.mitarbeiter_ref) ?? '';
+                  const mitIdx = mitarbeiterIndexMap.get(mitId) ?? 0;
+                  const statusKey = shift.fields.schicht_status?.key ?? 'geplant';
+                  return (
+                    <div
+                      key={shift.record_id}
+                      className="flex items-center gap-3 p-2.5 rounded-xl border border-border bg-muted/20 group"
+                    >
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${getAvatarColor(mitIdx)}`}>
+                        {shift.mitarbeiter_refName
+                          ? shift.mitarbeiter_refName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                          : '?'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold truncate">{shift.mitarbeiter_refName || '—'}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <span className="text-xs text-muted-foreground truncate">{shift.schicht_refName || '—'}</span>
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0 text-[10px] font-medium ${STATUS_COLORS[statusKey] ?? STATUS_COLORS.geplant}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[statusKey] ?? STATUS_DOT.geplant}`} />
+                            {shift.fields.schicht_status?.label ?? 'Geplant'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={() => handleEditShift(shift)}
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          title="Bearbeiten"
+                        >
+                          <IconPencil size={13} className="shrink-0" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(shift)}
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
+                          title="Löschen"
+                        >
+                          <IconTrash size={13} className="shrink-0" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="p-4">
-          {todayShifts.length === 0 ? (
-            <div className="py-10 text-center text-muted-foreground text-sm">
-              <IconCalendar size={36} className="mx-auto mb-3 text-muted-foreground/40" stroke={1.5} />
-              Keine Schichten für heute geplant
+        {/* Wochenstatus-Panel */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <IconCalendar size={16} className="text-primary" />
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {todayShifts.map(shift => {
-                const mitId = extractRecordId(shift.fields.mitarbeiter_ref) ?? '';
-                const mitIdx = mitarbeiterIndexMap.get(mitId) ?? 0;
-                const statusKey = shift.fields.schicht_status?.key ?? 'geplant';
-                return (
-                  <div
-                    key={shift.record_id}
-                    className="flex items-start gap-3 p-3 rounded-xl border border-border bg-muted/20"
-                  >
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${getAvatarColor(mitIdx)}`}>
-                      {shift.mitarbeiter_refName
-                        ? shift.mitarbeiter_refName.split(' ').map(n => n[0]).join('').slice(0, 2)
-                        : '?'}
+            <div>
+              <h2 className="font-semibold text-sm leading-tight">Wochenstatus</h2>
+              <p className="text-xs text-muted-foreground">
+                {format(currentWeekStart, 'dd. MMM', { locale: de })} – {format(weekEnd, 'dd. MMM', { locale: de })}
+              </p>
+            </div>
+          </div>
+          <div className="p-4 space-y-3">
+            {LOOKUP_OPTIONS.schichtplanung?.schicht_status?.map(opt => {
+              const count = enrichedSchichtplanung.filter(p => {
+                if (!p.fields.schicht_datum) return false;
+                const d = parseISO(p.fields.schicht_datum.slice(0, 10));
+                return d >= currentWeekStart && d <= weekEnd && p.fields.schicht_status?.key === opt.key;
+              }).length;
+              const pct = weekStats.total > 0 ? Math.round((count / weekStats.total) * 100) : 0;
+              return (
+                <div key={opt.key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[opt.key] ?? 'bg-gray-400'}`} />
+                      <span className="text-xs text-muted-foreground">{opt.label}</span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold truncate">{shift.mitarbeiter_refName || '—'}</div>
-                      <div className="text-xs text-muted-foreground truncate mt-0.5">
-                        {shift.schicht_refName || '—'}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${STATUS_COLORS[statusKey] ?? STATUS_COLORS.geplant}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[statusKey] ?? STATUS_DOT.geplant}`} />
-                          {shift.fields.schicht_status?.label ?? 'Geplant'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button
-                        onClick={() => handleEditShift(shift)}
-                        className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                        title="Bearbeiten"
-                      >
-                        <IconPencil size={14} className="shrink-0" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(shift)}
-                        className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
-                        title="Löschen"
-                      >
-                        <IconTrash size={14} className="shrink-0" />
-                      </button>
-                    </div>
+                    <span className="text-xs font-semibold">{count}</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${STATUS_DOT[opt.key] ?? 'bg-gray-400'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {weekStats.total === 0 && (
+              <div className="py-4 text-center text-muted-foreground text-xs">
+                <IconCalendar size={24} className="mx-auto mb-1.5 text-muted-foreground/30" stroke={1.5} />
+                Keine Schichten diese Woche
+              </div>
+            )}
+            {weekStats.pending > 0 && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-2.5">
+                <IconAlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800">
+                  <span className="font-semibold">{weekStats.pending} Schicht{weekStats.pending !== 1 ? 'en' : ''}</span> noch nicht bestätigt
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ── Intent 3: Wochenplanung ── */}
+      {/* ── Wochenplanung – Hauptarbeitsbereich ── */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
-        {/* Calendar Header */}
+        {/* Kalender-Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2 min-w-0">
-            <IconCalendar size={16} className="text-primary shrink-0" />
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <IconCalendar size={16} className="text-primary" />
+            </div>
             <div className="flex items-center gap-1.5 min-w-0">
               <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" onClick={goToPrevWeek}>
                 <IconChevronLeft size={14} />
@@ -352,31 +419,31 @@ export default function DashboardOverview() {
           </div>
         </div>
 
-        {/* Calendar Grid */}
+        {/* Kalender-Grid */}
         <div className="overflow-x-auto">
           <div style={{ minWidth: filteredMitarbeiter.length > 0 ? '640px' : '400px' }}>
-            {/* Day header row */}
+            {/* Wochentag-Header */}
             <div
               className="grid border-b border-border bg-muted/30"
-              style={{ gridTemplateColumns: `160px repeat(7, 1fr)` }}
+              style={{ gridTemplateColumns: `168px repeat(7, 1fr)` }}
             >
-              <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-r border-border">
+              <div className="px-3 py-2.5 text-xs font-medium text-muted-foreground border-r border-border">
                 Mitarbeiter
               </div>
               {weekDays.map(day => (
                 <div
                   key={day.toISOString()}
                   className={`px-2 py-2 text-center border-r border-border last:border-r-0 ${
-                    isToday(day) ? 'bg-primary/5' : ''
+                    isToday(day) ? 'bg-primary/8' : ''
                   }`}
                 >
-                  <div className={`text-[10px] font-medium uppercase tracking-wide ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <div className={`text-[10px] font-semibold uppercase tracking-widest ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
                     {format(day, 'EEE', { locale: de })}
                   </div>
                   <div
-                    className={`text-sm font-semibold leading-tight mt-0.5 ${
+                    className={`text-sm font-bold leading-tight mt-0.5 ${
                       isToday(day)
-                        ? 'w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto'
+                        ? 'w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto text-xs'
                         : 'text-foreground'
                     }`}
                   >
@@ -386,23 +453,31 @@ export default function DashboardOverview() {
               ))}
             </div>
 
-            {/* Employee rows */}
+            {/* Mitarbeiter-Zeilen */}
             {filteredMitarbeiter.length === 0 ? (
               <div className="py-16 text-center text-muted-foreground text-sm">
-                <IconUsers size={36} className="mx-auto mb-3 text-muted-foreground/40" stroke={1.5} />
-                Keine Mitarbeiter gefunden
+                <IconUsers size={36} className="mx-auto mb-3 text-muted-foreground/30" stroke={1.5} />
+                <p>Keine Mitarbeiter gefunden</p>
+                {selectedAbteilung !== 'all' && (
+                  <button
+                    onClick={() => setSelectedAbteilung('all')}
+                    className="mt-2 text-xs text-primary underline underline-offset-2"
+                  >
+                    Filter zurücksetzen
+                  </button>
+                )}
               </div>
             ) : (
               filteredMitarbeiter.map((m, rowIdx) => (
                 <div
                   key={m.record_id}
-                  className={`grid border-b border-border last:border-b-0 ${rowIdx % 2 === 1 ? 'bg-muted/10' : ''}`}
-                  style={{ gridTemplateColumns: `160px repeat(7, 1fr)` }}
+                  className={`grid border-b border-border last:border-b-0 hover:bg-muted/5 transition-colors ${rowIdx % 2 === 1 ? 'bg-muted/10' : ''}`}
+                  style={{ gridTemplateColumns: `168px repeat(7, 1fr)` }}
                 >
-                  {/* Employee cell */}
-                  <div className="px-3 py-2 border-r border-border flex items-center gap-2 min-h-[56px]">
+                  {/* Mitarbeiter-Zelle */}
+                  <div className="px-3 py-2 border-r border-border flex items-center gap-2 min-h-[60px]">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${getAvatarColor(rowIdx)}`}>
-                      {(m.fields.vorname?.[0] ?? '?')}{(m.fields.nachname?.[0] ?? '')}
+                      {(m.fields.vorname?.[0] ?? '').toUpperCase()}{(m.fields.nachname?.[0] ?? '').toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
                       <span className="text-xs font-semibold text-foreground truncate block">
@@ -416,7 +491,7 @@ export default function DashboardOverview() {
                     </div>
                   </div>
 
-                  {/* Day cells */}
+                  {/* Tages-Zellen */}
                   {weekDays.map(day => {
                     const dateStr = format(day, 'yyyy-MM-dd');
                     const key = `${dateStr}_${m.record_id}`;
@@ -425,7 +500,7 @@ export default function DashboardOverview() {
                     return (
                       <div
                         key={day.toISOString()}
-                        className={`border-r border-border last:border-r-0 p-1 min-h-[56px] ${
+                        className={`border-r border-border last:border-r-0 p-1 min-h-[60px] ${
                           isToday(day) ? 'bg-primary/5' : ''
                         }`}
                       >
@@ -439,8 +514,8 @@ export default function DashboardOverview() {
                                   STATUS_COLORS[statusKey] ?? STATUS_COLORS.geplant
                                 }`}
                               >
-                                <div className="font-medium truncate">{shift.schicht_refName || '—'}</div>
-                                <div className="flex items-center gap-1 mt-1">
+                                <div className="font-semibold truncate">{shift.schicht_refName || '—'}</div>
+                                <div className="flex items-center gap-0.5 mt-0.5">
                                   <button
                                     onClick={() => handleEditShift(shift)}
                                     className="p-0.5 rounded hover:bg-black/10 transition-colors"
@@ -461,11 +536,11 @@ export default function DashboardOverview() {
                           })}
                           <button
                             onClick={() => handleAddShift(day, m.record_id)}
-                            className="flex items-center justify-center w-full rounded-md border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                            style={{ minHeight: dayShifts.length === 0 ? '40px' : '20px' }}
+                            className="flex items-center justify-center w-full rounded-md border border-dashed border-border/60 text-muted-foreground/50 hover:border-primary hover:text-primary transition-colors"
+                            style={{ minHeight: dayShifts.length === 0 ? '42px' : '18px' }}
                             title="Schicht hinzufügen"
                           >
-                            <IconPlus size={12} className="shrink-0" />
+                            <IconPlus size={11} className="shrink-0" />
                           </button>
                         </div>
                       </div>
@@ -477,69 +552,19 @@ export default function DashboardOverview() {
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-3 px-4 py-3 border-t border-border">
+        {/* Legende */}
+        <div className="flex flex-wrap gap-4 px-4 py-2.5 border-t border-border bg-muted/20">
           {LOOKUP_OPTIONS.schichtplanung?.schicht_status?.map(opt => (
             <div key={opt.key} className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[opt.key] ?? 'bg-gray-400'}`} />
               <span className="text-xs text-muted-foreground">{opt.label}</span>
             </div>
           ))}
+          <div className="ml-auto flex items-center gap-1.5">
+            <Badge variant="secondary" className="text-[10px] h-5">{weekStats.total} Schichten diese Woche</Badge>
+          </div>
         </div>
       </div>
-
-      {/* ── Intent 4: Wochenübersicht pro Mitarbeiter ── */}
-      {weekStats.total > 0 && (
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-            <IconUsers size={16} className="text-primary shrink-0" />
-            <h3 className="font-semibold text-sm">Wochenübersicht</h3>
-            <Badge variant="secondary" className="text-xs ml-auto">{weekStats.total} Schichten</Badge>
-          </div>
-          <div className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {enrichedMitarbeiter
-                .map((m, mIdx) => {
-                  const shifts = enrichedSchichtplanung.filter(p => {
-                    if (!p.fields.schicht_datum) return false;
-                    const d = parseISO(p.fields.schicht_datum.slice(0, 10));
-                    const mitId = extractRecordId(p.fields.mitarbeiter_ref);
-                    return d >= currentWeekStart && d <= weekEnd && mitId === m.record_id;
-                  });
-                  return { m, mIdx, shifts };
-                })
-                .filter(({ shifts }) => shifts.length > 0)
-                .map(({ m, mIdx, shifts }) => (
-                  <div key={m.record_id} className="flex items-start gap-3 p-3 rounded-xl border border-border bg-muted/20">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${getAvatarColor(mIdx)}`}>
-                      {(m.fields.vorname?.[0] ?? '?')}{(m.fields.nachname?.[0] ?? '')}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-medium truncate">
-                        {m.fields.vorname} {m.fields.nachname}
-                      </div>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {shifts.map(s => {
-                          const statusKey = s.fields.schicht_status?.key ?? 'geplant';
-                          return (
-                            <Badge
-                              key={s.record_id}
-                              variant="outline"
-                              className={`text-[10px] px-1.5 py-0 h-auto ${STATUS_COLORS[statusKey] ?? ''}`}
-                            >
-                              {s.schicht_refName || formatDate(s.fields.schicht_datum)}
-                            </Badge>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <span className="text-xs font-semibold text-muted-foreground shrink-0">{shifts.length}×</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Dialogs */}
       <SchichtplanungDialog
@@ -566,7 +591,7 @@ export default function DashboardOverview() {
         title="Schicht löschen"
         description={
           deleteTarget
-            ? `Schicht "${deleteTarget.schicht_refName || '—'}" für ${deleteTarget.mitarbeiter_refName || '—'} am ${formatDate(deleteTarget.fields.schicht_datum)} wirklich löschen?`
+            ? `Schicht „${deleteTarget.schicht_refName || '—'}" für ${deleteTarget.mitarbeiter_refName || '—'} am ${formatDate(deleteTarget.fields.schicht_datum)} wirklich löschen?`
             : 'Wirklich löschen?'
         }
         onConfirm={handleDelete}
@@ -578,11 +603,14 @@ export default function DashboardOverview() {
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
       </div>
-      <Skeleton className="h-48 rounded-2xl" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Skeleton className="lg:col-span-2 h-48 rounded-2xl" />
+        <Skeleton className="h-48 rounded-2xl" />
+      </div>
       <Skeleton className="h-96 rounded-2xl" />
     </div>
   );
