@@ -1,0 +1,9 @@
+- Mitarbeiter (mitarbeiter): vorname[string/text], nachname[string/text], personalnummer[string/text], email[string/email], telefon[string/tel], position[string/text], beschaeftigungsart[lookup/radio], wochenstunden[number], abteilung_ref[applookup/select], mitarbeiter_notizen[string/textarea]
+  → abteilung_ref links to app_id 69c5196c30a2e351ed55e8e6
+- Standorte & Abteilungen (standorte_abteilungen): standort_name[string/text], abteilung_name[string/text], standort_strasse[string/text], standort_hausnummer[string/text], standort_plz[string/text], standort_ort[string/text], standort_beschreibung[string/textarea]
+- Schichtvorlagen (schichtvorlagen): schicht_name[string/text], schicht_kuerzel[string/text], schicht_beginn[string/text], schicht_ende[string/text], pausendauer[number], schicht_kategorie[lookup/select], schicht_abteilung_ref[applookup/select], schicht_beschreibung[string/textarea]
+  → schicht_abteilung_ref links to app_id 69c5196c30a2e351ed55e8e6
+- Schichtplanung (schichtplanung): schicht_datum[date/date], mitarbeiter_ref[applookup/select], schicht_ref[applookup/select], planung_abteilung_ref[applookup/select], schicht_status[lookup/radio], planung_notizen[string/textarea]
+  → mitarbeiter_ref links to app_id 69c519719a8c4a3e9d08485f
+  → schicht_ref links to app_id 69c51971ed063aab6dfc28d0
+  → planung_abteilung_ref links to app_id 69c5196c30a2e351ed55e8e6
